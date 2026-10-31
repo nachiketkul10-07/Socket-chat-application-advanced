@@ -1,0 +1,74 @@
+[
+  {
+    "numContributors": 5,
+    "normalChat": {
+      "timelineMessages": 6,
+      "separateReplyMessages": 5,
+      "structuredUpdateEvents": 0,
+      "rawContentBytes": 325,
+      "timeElapsedMs": 5,
+      "chatFragmentation": "6 separate bubbles"
+    },
+    "liveFillin": {
+      "timelineMessages": 1,
+      "separateReplyMessages": 0,
+      "structuredUpdateEvents": 5,
+      "rawContentBytes": 152,
+      "timeElapsedMs": 99,
+      "syncCorrectness": "100% Verified",
+      "chatFragmentation": "Single consolidated interactive card"
+    },
+    "efficiencyGain": {
+      "timelineMessageReduction": "83% reduction in timeline pollution",
+      "replySpamEliminated": "5 reply messages eliminated"
+    }
+  },
+  {
+    "numContributors": 15,
+    "normalChat": {
+      "timelineMessages": 16,
+      "separateReplyMessages": 15,
+      "structuredUpdateEvents": 0,
+      "rawContentBytes": 845,
+      "timeElapsedMs": 10,
+      "chatFragmentation": "16 separate bubbles"
+    },
+    "liveFillin": {
+      "timelineMessages": 1,
+      "separateReplyMessages": 0,
+      "structuredUpdateEvents": 15,
+      "rawContentBytes": 357,
+      "timeElapsedMs": 318,
+      "syncCorrectness": "100% Verified",
+      "chatFragmentation": "Single consolidated interactive card"
+    },
+    "efficiencyGain": {
+      "timelineMessageReduction": "94% reduction in timeline pollution",
+      "replySpamEliminated": "15 reply messages eliminated"
+    }
+  },
+  {
+    "numContributors": 30,
+    "normalChat": {
+      "timelineMessages": 31,
+      "separateReplyMessages": 30,
+      "structuredUpdateEvents": 0,
+      "rawContentBytes": 1640,
+      "timeElapsedMs": 24,
+      "chatFragmentation": "31 separate bubbles"
+    },
+    "liveFillin": {
+      "timelineMessages": 1,
+      "separateReplyMessages": 0,
+      "structuredUpdateEvents": 30,
+      "rawContentBytes": 672,
+      "timeElapsedMs": 576,
+      "syncCorrectness": "100% Verified",
+      "chatFragmentation": "Single consolidated interactive card"
+    },
+    "efficiencyGain": {
+      "timelineMessageReduction": "97% reduction in timeline pollution",
+      "replySpamEliminated": "30 reply messages eliminated"
+    }
+  }
+]

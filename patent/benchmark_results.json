@@ -1,0 +1,42 @@
+[
+  {
+    "N": 1000,
+    "batchSize": 25,
+    "maxBatch": 25,
+    "batches": 40,
+    "totalReceived": 1000,
+    "elapsedMs": 996,
+    "throughputMsgPerSec": 1004,
+    "mode": "fixed"
+  },
+  {
+    "N": 1000,
+    "batchSize": 50,
+    "maxBatch": 50,
+    "batches": 20,
+    "totalReceived": 1000,
+    "elapsedMs": 937,
+    "throughputMsgPerSec": 1067,
+    "mode": "fixed"
+  },
+  {
+    "N": 1000,
+    "batchSize": 100,
+    "maxBatch": 100,
+    "batches": 10,
+    "totalReceived": 1000,
+    "elapsedMs": 977,
+    "throughputMsgPerSec": 1024,
+    "mode": "fixed"
+  },
+  {
+    "N": 1000,
+    "batchSize": 25,
+    "maxBatch": 100,
+    "batches": 24,
+    "totalReceived": 1000,
+    "elapsedMs": 489,
+    "throughputMsgPerSec": 2045,
+    "mode": "adaptive"
+  }
+]

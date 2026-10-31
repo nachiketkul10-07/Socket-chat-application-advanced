@@ -1,0 +1,20 @@
+{
+  "name": "chat-server-backend",
+  "version": "1.0.0",
+  "description": "Enhanced TCP chat server with SQLite persistence",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js 8080",
+    "dev": "node server.js 8080 chat-dev.db"
+  },
+  "dependencies": {
+    "sql.js": "^1.14.2"
+  },
+  "keywords": [
+    "chat",
+    "tcp",
+    "sqlite"
+  ],
+  "author": "",
+  "license": "MIT"
+}

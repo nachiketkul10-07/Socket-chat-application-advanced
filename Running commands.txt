@@ -1,0 +1,14 @@
+Open the running app:
+- Same network: http://10.20.112.235:5173
+- This computer: http://localhost:5173
+To start it again from the project folder:
+.\start.ps1
+Or start each service in a separate terminal:
+cd backend
+node server.js 8080
+
+cd bridge
+node server.js
+
+cd dashboard
+npm run dev -- --host 0.0.0.0
