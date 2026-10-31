@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Message, User, FillableRevision, FillableFieldDetail } from '../types';
+import { Message, User, FillableRevision, FillableFieldDetail, getAvatarGradient } from '../types';
 import { FillableMessageHistoryModal } from './FillableMessageHistoryModal';
 import { MessageContextMenu, ContextMenuAction } from './MessageContextMenu';
 import { AppendDetailModal } from './AppendDetailModal';
@@ -36,6 +36,7 @@ export const FillableMessageCard: React.FC<FillableMessageCardProps> = ({
   const isLocked = isFinalized || isExpired;
 
   const creatorUser = users.get(payload.creatorId) || { username: payload.creatorUsername || 'User' };
+  const creatorAvatar = getAvatarGradient(creatorUser.username);
 
   const formatTs = (ts?: number | null) => {
     if (!ts) return '';
@@ -166,7 +167,14 @@ export const FillableMessageCard: React.FC<FillableMessageCardProps> = ({
   return (
     <div className={`message ${isOwn ? 'own' : 'other'} collaborative-message-row`}>
       {!isOwn && (
-        <div className="message-avatar">
+        <div
+          className="message-avatar"
+          style={{
+            background: creatorAvatar.bg,
+            border: `1.5px solid ${creatorAvatar.border}`,
+            boxShadow: `0 0 8px ${creatorAvatar.glow}`
+          }}
+        >
           {creatorUser.username?.charAt(0).toUpperCase() || '?'}
         </div>
       )}
@@ -185,6 +193,21 @@ export const FillableMessageCard: React.FC<FillableMessageCardProps> = ({
           onTouchMove={handleTouchEndOrMove}
           title="Right-click for options • Double-tap or hold to delete"
         >
+          {/* Quick Hover Action Trigger */}
+          <button
+            type="button"
+            className="bubble-action-trigger"
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              setContextMenu({ x: Math.min(rect.left, window.innerWidth - 200), y: rect.bottom + 6 });
+            }}
+            title="Options & Actions"
+            aria-label="Options"
+          >
+            ⋮
+          </button>
+
           {/* Main message text */}
           <div className="collab-bubble-intro">
             {payload.introText || message.text || 'Collaborative Message'}
@@ -260,7 +283,10 @@ export const FillableMessageCard: React.FC<FillableMessageCardProps> = ({
             {isLocked ? (
               <span className="collab-status-pill locked">🔒 Locked</span>
             ) : (
-              <span className="collab-status-pill open">🟢 Living Message</span>
+              <span className="collab-status-pill open">
+                <span className="live-status-pulse"></span>
+                Living Message
+              </span>
             )}
             <span className="collab-bubble-time">
               {formatTs(payload.updatedAt || message.timestamp)}

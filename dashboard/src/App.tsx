@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { wsService } from './websocket';
-import { User, Conversation, Message, Notification, Suggestion, ServerMessage, GroupMember, TypingIndicator } from './types';
+import { User, Conversation, Message, Notification, Suggestion, ServerMessage, GroupMember, TypingIndicator, getAvatarGradient } from './types';
 import { CreateGroupModal } from './components/CreateGroupModal';
 import { GroupMembersModal } from './components/GroupMembersModal';
 import { TopNav } from './components/TopNav';
@@ -23,6 +23,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<'direct' | 'group' | 'public'>('public');
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileConversationListOpen, setIsMobileConversationListOpen] = useState(true);
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
 
   // Modals & Typing State
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
@@ -456,16 +457,18 @@ function App() {
     });
   };
 
-  const handleLogin = async () => {
-    if (!username.trim()) return;
+  const handleLogin = async (overrideUsername?: string) => {
+    const targetUser = (overrideUsername || username).trim();
+    if (!targetUser) return;
     try {
-      localStorage.setItem('chat_username', username.trim());
+      setUsername(targetUser);
+      localStorage.setItem('chat_username', targetUser);
       if (!wsService.isConnected()) {
         await wsService.connect();
       }
       wsService.send({
         type: 'auth',
-        username: username.trim()
+        username: targetUser
       });
     } catch (err) {
       alert('Failed to connect to backend server. Make sure server is running.');
@@ -714,18 +717,71 @@ function App() {
   if (!currentUser) {
     return (
       <div className="login-container">
+        <div className="login-glow-orb orb-1"></div>
+        <div className="login-glow-orb orb-2"></div>
         <div className="login-box">
-          <h1>💬 Socket Chat Platform</h1>
-          <p>Real-time C++ Winsock Multi-user Engine with LCFM</p>
-          <input
-            type="text"
-            placeholder="Enter username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-            autoFocus
-          />
-          <button onClick={handleLogin}>Connect & Join</button>
+          <div className="login-brand-badge">
+            <span className="brand-logo-icon">💬</span>
+            <span className="brand-engine-tag">C++ Winsock Engine</span>
+          </div>
+          <h1>SocketChat Advanced</h1>
+          <p className="login-subtitle">
+            Next-gen multi-client chat with Live Collaborative Fill-in Messages (LCFM)
+          </p>
+
+          <div className="quick-login-section">
+            <span className="quick-login-title">Quick 1-Click Connect:</span>
+            <div className="quick-user-chips">
+              {['Nachiket', 'Prathamesh', 'Amey', 'Aryan', 'Tester'].map(name => {
+                const grad = getAvatarGradient(name);
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    className="quick-user-chip"
+                    onClick={() => handleLogin(name)}
+                    title={`Connect instantly as ${name}`}
+                  >
+                    <span
+                      className="chip-avatar"
+                      style={{
+                        background: grad.bg,
+                        border: `1px solid ${grad.border}`
+                      }}
+                    >
+                      {name.charAt(0)}
+                    </span>
+                    <span className="chip-name">{name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="login-form-divider">
+            <span>or enter custom username</span>
+          </div>
+
+          <div className="login-input-group">
+            <input
+              type="text"
+              placeholder="Username (e.g. JohnDoe)..."
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+              autoFocus
+            />
+            <button className="btn-login-submit" onClick={() => handleLogin()}>
+              Connect & Join 🚀
+            </button>
+          </div>
+
+          <div className="login-tech-specs">
+            <span className="spec-badge">⚡ TCP: 8080</span>
+            <span className="spec-badge">🌐 WS: 3001</span>
+            <span className="spec-badge">💾 SQLite DB</span>
+            <span className="spec-badge">🔒 LCFM Model A</span>
+          </div>
         </div>
       </div>
     );
@@ -738,6 +794,9 @@ function App() {
         isConnected={isConnected}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        isRightPanelOpen={isRightPanelOpen}
+        onToggleRightPanel={() => setIsRightPanelOpen(prev => !prev)}
+        unreadNotificationsCount={notifications.filter(n => !n.isRead).length}
         onLogout={() => {
           localStorage.removeItem('chat_username');
           wsService.disconnect();
@@ -783,22 +842,35 @@ function App() {
 
           <div className="conversation-list">
             {filteredConversations.length === 0 ? (
-              <div className="empty-state">No conversations found</div>
+              <div className="empty-state">
+                <span className="empty-icon">📭</span>
+                <span>No conversations found</span>
+              </div>
             ) : (
               filteredConversations.map(conv => {
                 const convTyping = typingMap.get(conv.id) || [];
+                const convName = getConversationName(conv);
+                const convAvatar = getAvatarGradient(convName);
+
                 return (
                   <div
                     key={conv.id}
                     className={`conversation-item ${activeConversation === conv.id ? 'active' : ''}`}
                     onClick={() => handleSelectConversation(conv.id)}
                   >
-                    <div className="conv-avatar">
-                      {getConversationName(conv).charAt(0).toUpperCase()}
+                    <div
+                      className="conv-avatar"
+                      style={{
+                        background: convAvatar.bg,
+                        border: `1.5px solid ${convAvatar.border}`,
+                        boxShadow: `0 0 10px ${convAvatar.glow}`
+                      }}
+                    >
+                      {convName.charAt(0).toUpperCase()}
                     </div>
                     <div className="conv-info">
                       <div className="conv-header">
-                        <span className="conv-name">{getConversationName(conv)}</span>
+                        <span className="conv-name">{convName}</span>
                         {conv.lastMessageTime && (
                           <span className="conv-time">{formatTimestamp(conv.lastMessageTime)}</span>
                         )}
@@ -831,9 +903,22 @@ function App() {
                   >
                     ‹
                   </button>
-                  <div className="header-avatar">
-                    {getConversationName(activeConvData).charAt(0).toUpperCase()}
-                  </div>
+                  {(() => {
+                    const convName = getConversationName(activeConvData);
+                    const headerAvatar = getAvatarGradient(convName);
+                    return (
+                      <div
+                        className="header-avatar"
+                        style={{
+                          background: headerAvatar.bg,
+                          border: `1.5px solid ${headerAvatar.border}`,
+                          boxShadow: `0 0 10px ${headerAvatar.glow}`
+                        }}
+                      >
+                        {convName.charAt(0).toUpperCase()}
+                      </div>
+                    );
+                  })()}
                   <div className="header-info">
                     <h2>{getConversationName(activeConvData)}</h2>
                     {activeTypingList.length > 0 ? (
@@ -857,7 +942,11 @@ function App() {
 
               <div className="message-thread">
                 {activeConvMessages.length === 0 ? (
-                  <div className="empty-state">No messages in this chat yet.</div>
+                  <div className="empty-state thread-empty-state">
+                    <div className="thread-empty-icon">👋</div>
+                    <h3>Welcome to {getConversationName(activeConvData)}</h3>
+                    <p>Start chatting or use <strong>📋 Live Fill-in</strong> to collaborate together!</p>
+                  </div>
                 ) : (
                   activeConvMessages.map(msg => {
                     const isDeleted = Boolean(msg.isDeleted || msg.kind === 'deleted');
@@ -877,6 +966,8 @@ function App() {
 
                     const isOwn = (msg.fromUserId || msg.senderId) === currentUser.id;
                     const sender = users.get(msg.fromUserId || msg.senderId || '');
+                    const senderName = sender?.username || (isOwn ? currentUser.username : 'User');
+                    const senderAvatar = getAvatarGradient(senderName);
 
                     return (
                       <div
@@ -889,22 +980,48 @@ function App() {
                         title={isDeleted ? 'Deleted message' : 'Double-tap on PC or hold on mobile to delete'}
                       >
                         {!isOwn && (
-                          <div className="message-avatar">
-                            {sender?.username?.charAt(0).toUpperCase() || '?'}
+                          <div
+                            className="message-avatar"
+                            style={{
+                              background: senderAvatar.bg,
+                              border: `1.5px solid ${senderAvatar.border}`,
+                              boxShadow: `0 0 8px ${senderAvatar.glow}`
+                            }}
+                          >
+                            {senderName.charAt(0).toUpperCase()}
                           </div>
                         )}
                         <div className="message-content">
                           {!isOwn && (
-                            <div className="message-sender">{sender?.username || 'User'}</div>
+                            <div className="message-sender">{senderName}</div>
                           )}
                           <div className={`message-bubble ${isDeleted ? 'bubble-deleted' : ''}`}>
+                            {!isDeleted && (
+                              <button
+                                type="button"
+                                className="bubble-action-trigger"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePromptDeleteMessage(msg);
+                                }}
+                                title="Delete or manage message"
+                                aria-label="Message options"
+                              >
+                                ⋮
+                              </button>
+                            )}
                             {isDeleted ? (
                               <span className="deleted-message-text">🚫 This message was deleted</span>
                             ) : (
-                              msg.text || msg.content
+                              <span className="bubble-text">{msg.text || msg.content}</span>
                             )}
                           </div>
-                          <div className="message-time">{formatTimestamp(msg.timestamp || msg.createdAt)}</div>
+                          <div className="message-time">
+                            <span>{formatTimestamp(msg.timestamp || msg.createdAt)}</span>
+                            {isOwn && !isDeleted && (
+                              <span className="read-receipt-ticks" title="Delivered">✓✓</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -949,62 +1066,113 @@ function App() {
                   onChange={handleInputChange}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                 />
-                <button onClick={handleSendMessage}>Send</button>
+                <button className="btn-send-message" onClick={handleSendMessage}>
+                  <span>Send</span>
+                  <span className="btn-send-icon">➤</span>
+                </button>
               </div>
             </>
           ) : (
             <div className="no-conversation">
-              <p>Select or create a conversation to start chatting</p>
+              <div className="no-conversation-card">
+                <div className="no-conv-icon">💬</div>
+                <h2>Welcome to SocketChat Platform</h2>
+                <p>Select a room or contact from the left panel to join the conversation.</p>
+                <div className="quick-start-chips">
+                  <button
+                    type="button"
+                    className="btn-quick-public"
+                    onClick={() => handleSelectConversation('public_general')}
+                  >
+                    🌐 Open Public General Room
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-quick-group"
+                    onClick={() => setIsCreateGroupOpen(true)}
+                  >
+                    👥 Create New Group
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
 
-        <div className={`right-panel ${isMobileConversationListOpen ? 'mobile-visible' : ''}`}>
-          <div className="panel-section">
-            <h3>Notifications ({notifications.filter(n => !n.isRead).length})</h3>
-            <div className="notification-list">
-              {notifications.length === 0 ? (
-                <p className="empty-state">No notifications</p>
-              ) : (
-                notifications.map(notif => (
-                  <div key={notif.id} className={`notification-item ${notif.isRead ? 'read' : 'unread'}`}>
-                    <div className="notif-text">{notif.text}</div>
-                    <div className="notif-time">{formatTimestamp(notif.timestamp)}</div>
-                    {notif.type === 'contact_request' && (
-                      <button className="add-btn" onClick={() => handleAcceptContact(notif.actorId)}>
-                        Accept
-                      </button>
-                    )}
+        {isRightPanelOpen && (
+          <div className={`right-panel ${isMobileConversationListOpen ? 'mobile-visible' : ''}`}>
+            <div className="panel-section">
+              <div className="panel-section-header">
+                <h3>Notifications</h3>
+                <span className="panel-badge-count">
+                  {notifications.filter(n => !n.isRead).length}
+                </span>
+              </div>
+              <div className="notification-list">
+                {notifications.length === 0 ? (
+                  <div className="empty-state">
+                    <span className="empty-icon">🔔</span>
+                    <span>No notifications</span>
                   </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="panel-section">
-            <h3>Suggested Users</h3>
-            <div className="suggestion-list">
-              {suggestions.length === 0 ? (
-                <p className="empty-state">No suggestions right now</p>
-              ) : (
-                suggestions.map(sug => (
-                  <div key={sug.id} className="suggestion-item">
-                    <div className="sug-avatar">{sug.username.charAt(0).toUpperCase()}</div>
-                    <div className="sug-info">
-                      <div className="sug-name">{sug.username}</div>
-                      <div className="sug-status">
-                        {sug.isOnline ? '🟢 Online' : '⚫ Offline'}
-                      </div>
+                ) : (
+                  notifications.map(notif => (
+                    <div key={notif.id} className={`notification-item ${notif.isRead ? 'read' : 'unread'}`}>
+                      <div className="notif-text">{notif.text}</div>
+                      <div className="notif-time">{formatTimestamp(notif.timestamp)}</div>
+                      {notif.type === 'contact_request' && (
+                        <button className="add-btn" onClick={() => handleAcceptContact(notif.actorId)}>
+                          Accept
+                        </button>
+                      )}
                     </div>
-                    <button className="add-btn" onClick={() => handleStartDirectChat(sug.id)}>
-                      Chat
-                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="panel-section">
+              <div className="panel-section-header">
+                <h3>Suggested Users</h3>
+                <span className="panel-badge-count">{suggestions.length}</span>
+              </div>
+              <div className="suggestion-list">
+                {suggestions.length === 0 ? (
+                  <div className="empty-state">
+                    <span className="empty-icon">👥</span>
+                    <span>No suggestions right now</span>
                   </div>
-                ))
-              )}
+                ) : (
+                  suggestions.map(sug => {
+                    const sugAvatar = getAvatarGradient(sug.username);
+                    return (
+                      <div key={sug.id} className="suggestion-item">
+                        <div
+                          className="sug-avatar"
+                          style={{
+                            background: sugAvatar.bg,
+                            border: `1.5px solid ${sugAvatar.border}`,
+                            boxShadow: `0 0 8px ${sugAvatar.glow}`
+                          }}
+                        >
+                          {sug.username.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="sug-info">
+                          <div className="sug-name">{sug.username}</div>
+                          <div className="sug-status">
+                            {sug.isOnline ? '🟢 Online' : '⚫ Offline'}
+                          </div>
+                        </div>
+                        <button className="add-btn" onClick={() => handleStartDirectChat(sug.id)}>
+                          Chat
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       <CreateGroupModal
