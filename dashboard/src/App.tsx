@@ -1200,6 +1200,7 @@ function App() {
           onClose={() => setIsFillableBuilderOpen(false)}
           conversationId={activeConversation}
           conversationParticipants={getConversationParticipants()}
+          availableUsers={Array.from(users.values())}
           currentUserId={currentUser.id}
           onSubmit={(payload) => wsService.send(payload)}
         />

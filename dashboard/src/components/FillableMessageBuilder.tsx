@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { User, FillableFieldType } from '../types';
+import React, { useState, useMemo } from 'react';
+import { User, FillableFieldType, getAvatarGradient } from '../types';
 
 interface BuilderField {
   fieldId: string;
@@ -17,6 +17,7 @@ interface FillableMessageBuilderProps {
   onClose: () => void;
   conversationId: string;
   conversationParticipants: User[];
+  availableUsers?: User[];
   currentUserId: string;
   onSubmit: (payload: any) => void;
 }
@@ -26,6 +27,7 @@ export const FillableMessageBuilder: React.FC<FillableMessageBuilderProps> = ({
   onClose,
   conversationId,
   conversationParticipants,
+  availableUsers = [],
   currentUserId,
   onSubmit
 }) => {
@@ -33,6 +35,7 @@ export const FillableMessageBuilder: React.FC<FillableMessageBuilderProps> = ({
   const [introText, setIntroText] = useState('Please share your details below:');
   const [freeformAssignment, setFreeformAssignment] = useState<'all' | 'custom' | 'creator'>('all');
   const [freeformAssignedUsers, setFreeformAssignedUsers] = useState<string[]>([]);
+  const [participantSearch, setParticipantSearch] = useState('');
 
   // Structured fields state
   const [fields, setFields] = useState<BuilderField[]>([
@@ -54,6 +57,24 @@ export const FillableMessageBuilder: React.FC<FillableMessageBuilderProps> = ({
   const [lockOnCompletion, setLockOnCompletion] = useState(true);
   const [finalizePermission, setFinalizePermission] = useState<'creator_only' | 'assigned_or_creator' | 'all'>('creator_only');
   const [deadlineStr, setDeadlineStr] = useState('');
+
+  // Merge conversation participants and any other available users, avoiding duplicates
+  const candidateUsers = useMemo(() => {
+    const map = new Map<string, User>();
+    (conversationParticipants || []).forEach(u => {
+      if (u && u.id && u.id !== currentUserId) map.set(u.id, u);
+    });
+    (availableUsers || []).forEach(u => {
+      if (u && u.id && u.id !== currentUserId && !map.has(u.id)) {
+        map.set(u.id, u);
+      }
+    });
+    return Array.from(map.values());
+  }, [conversationParticipants, availableUsers, currentUserId]);
+
+  const filteredCandidates = candidateUsers.filter(u =>
+    u.username.toLowerCase().includes(participantSearch.toLowerCase())
+  );
 
   if (!isOpen) return null;
 
@@ -94,11 +115,24 @@ export const FillableMessageBuilder: React.FC<FillableMessageBuilderProps> = ({
     );
   };
 
+  const handleSelectAllFreeform = () => {
+    setFreeformAssignedUsers(filteredCandidates.map(u => u.id));
+  };
+
+  const handleClearAllFreeform = () => {
+    setFreeformAssignedUsers([]);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!introText.trim()) {
       alert('Please enter a message.');
+      return;
+    }
+
+    if (mode === 'freeform' && freeformAssignment === 'custom' && freeformAssignedUsers.length === 0) {
+      alert('Please select at least one participant who can append details, or choose "Everyone in Conversation".');
       return;
     }
 
@@ -136,6 +170,11 @@ export const FillableMessageBuilder: React.FC<FillableMessageBuilderProps> = ({
       conversationId,
       introText: introText.trim(),
       fields: formattedFields,
+      templateSegments: {
+        mode,
+        appendAssignmentMode: freeformAssignment,
+        appendAssignedUserIds: freeformAssignment === 'custom' ? freeformAssignedUsers : []
+      },
       finalizationSettings: {
         requireAllMandatory: mode === 'structured' ? requireAllMandatory : false,
         allowReopen,
@@ -160,7 +199,7 @@ export const FillableMessageBuilder: React.FC<FillableMessageBuilderProps> = ({
         </div>
 
         {/* Mode Selector Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #222f4c', padding: '0 18px', background: '#0e1628' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid #30363d', padding: '0 18px', background: '#161b22' }}>
           <button
             type="button"
             onClick={() => setMode('freeform')}
@@ -168,8 +207,8 @@ export const FillableMessageBuilder: React.FC<FillableMessageBuilderProps> = ({
               padding: '10px 16px',
               background: 'transparent',
               border: 'none',
-              borderBottom: mode === 'freeform' ? '2px solid #3b82f6' : '2px solid transparent',
-              color: mode === 'freeform' ? '#60a5fa' : '#94a3b8',
+              borderBottom: mode === 'freeform' ? '2px solid #58a6ff' : '2px solid transparent',
+              color: mode === 'freeform' ? '#58a6ff' : '#8b949e',
               fontWeight: 600,
               fontSize: '13px',
               cursor: 'pointer'
@@ -184,8 +223,8 @@ export const FillableMessageBuilder: React.FC<FillableMessageBuilderProps> = ({
               padding: '10px 16px',
               background: 'transparent',
               border: 'none',
-              borderBottom: mode === 'structured' ? '2px solid #3b82f6' : '2px solid transparent',
-              color: mode === 'structured' ? '#60a5fa' : '#94a3b8',
+              borderBottom: mode === 'structured' ? '2px solid #58a6ff' : '2px solid transparent',
+              color: mode === 'structured' ? '#58a6ff' : '#8b949e',
               fontWeight: 600,
               fontSize: '13px',
               cursor: 'pointer'
@@ -212,21 +251,21 @@ export const FillableMessageBuilder: React.FC<FillableMessageBuilderProps> = ({
             </div>
 
             {mode === 'freeform' ? (
-              <div style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: '8px', padding: '14px' }}>
-                <div style={{ fontSize: '13px', color: '#38bdf8', fontWeight: 600, marginBottom: '6px' }}>
+              <div style={{ background: '#0d1117', border: '1px solid #30363d', borderRadius: '10px', padding: '16px' }}>
+                <div style={{ fontSize: '13px', color: '#58a6ff', fontWeight: 600, marginBottom: '6px' }}>
                   💡 How this works:
                 </div>
-                <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.6', marginBottom: '14px' }}>
+                <div style={{ fontSize: '12px', color: '#8b949e', lineHeight: '1.6', marginBottom: '14px' }}>
                   • The message appears as a normal chat bubble in the conversation.<br />
-                  • Participants can <strong>right-click on the message</strong> to append any detail (e.g. PRN, location, name).<br />
-                  • <strong>Only you (creator) will see who contributed which detail.</strong> Other participants will see the data without other people's names.
+                  • Permitted participants can click <strong>➕ Append Detail</strong> or right-click to add details.<br />
+                  • <strong>Only you (creator) will see who contributed which detail.</strong> Other participants will see data without contributor names.
                 </div>
 
-                <div className="form-group">
-                  <label style={{ fontSize: '12px', color: '#cbd5e1', marginBottom: '6px', display: 'block' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: '12px', color: '#f0f6fc', fontWeight: 600, marginBottom: '8px', display: 'block' }}>
                     Who can append details to this message?
                   </label>
-                  <div className="radio-group" style={{ display: 'flex', gap: '14px' }}>
+                  <div className="radio-group" style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '12px' }}>
                     <label className="radio-label">
                       <input
                         type="radio"
@@ -256,19 +295,108 @@ export const FillableMessageBuilder: React.FC<FillableMessageBuilderProps> = ({
                     </label>
                   </div>
 
+                  {/* Enhanced Specific Participants Picker */}
                   {freeformAssignment === 'custom' && (
-                    <div className="participant-chips" style={{ marginTop: '10px' }}>
-                      {conversationParticipants
-                        .filter(p => p.id !== currentUserId)
-                        .map((p) => (
-                          <div
-                            key={p.id}
-                            className={`chip ${freeformAssignedUsers.includes(p.id) ? 'selected' : ''}`}
-                            onClick={() => handleToggleFreeformParticipant(p.id)}
+                    <div className="builder-participant-picker">
+                      <div className="picker-toolbar">
+                        <div className="picker-search-wrap">
+                          <span className="picker-search-icon">🔍</span>
+                          <input
+                            type="text"
+                            className="picker-search-input"
+                            placeholder="Filter participants by name..."
+                            value={participantSearch}
+                            onChange={(e) => setParticipantSearch(e.target.value)}
+                          />
+                          {participantSearch && (
+                            <button
+                              type="button"
+                              className="picker-search-clear"
+                              onClick={() => setParticipantSearch('')}
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                        <div className="picker-quick-actions">
+                          <button
+                            type="button"
+                            className="btn-picker-action"
+                            onClick={handleSelectAllFreeform}
                           >
-                            {p.username}
+                            Select All
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-picker-action"
+                            onClick={handleClearAllFreeform}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="picker-header-info">
+                        <span className="picker-count-label">
+                          Permitted Participants ({freeformAssignedUsers.length} selected):
+                        </span>
+                      </div>
+
+                      <div className="picker-user-list">
+                        {filteredCandidates.length === 0 ? (
+                          <div className="picker-empty-state">
+                            <span>No other participants found{participantSearch ? ` matching "${participantSearch}"` : ''}</span>
                           </div>
-                        ))}
+                        ) : (
+                          filteredCandidates.map((p) => {
+                            const isSelected = freeformAssignedUsers.includes(p.id);
+                            const avatar = getAvatarGradient(p.username);
+
+                            return (
+                              <div
+                                key={p.id}
+                                className={`picker-user-row ${isSelected ? 'selected' : ''}`}
+                                onClick={() => handleToggleFreeformParticipant(p.id)}
+                              >
+                                <div
+                                  className="picker-user-avatar"
+                                  style={{
+                                    background: avatar.bg,
+                                    border: `1.5px solid ${avatar.border}`,
+                                    boxShadow: `0 0 8px ${avatar.glow}`
+                                  }}
+                                >
+                                  {p.username.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="picker-user-info">
+                                  <span className="picker-user-name">{p.username}</span>
+                                  <span className="picker-user-status">
+                                    {p.isOnline ? '🟢 Online' : '⚫ Offline'}
+                                  </span>
+                                </div>
+                                <div className="picker-checkbox-wrapper">
+                                  <input
+                                    type="checkbox"
+                                    className="picker-checkbox"
+                                    checked={isSelected}
+                                    onChange={() => {}}
+                                    aria-label={`Select ${p.username}`}
+                                  />
+                                  <span className={`custom-checkbox ${isSelected ? 'checked' : ''}`}>
+                                    {isSelected && '✓'}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {freeformAssignedUsers.length === 0 && (
+                        <div className="picker-warning-banner">
+                          ⚠️ Please check at least one participant above who can append details, or choose "Everyone in Conversation".
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -299,51 +427,63 @@ export const FillableMessageBuilder: React.FC<FillableMessageBuilderProps> = ({
                         <select
                           className="builder-field-type-select"
                           value={field.fieldType}
-                          onChange={(e) =>
-                            handleFieldChange(idx, { fieldType: e.target.value as FillableFieldType })
-                          }
+                          onChange={(e) => handleFieldChange(idx, { fieldType: e.target.value as FillableFieldType })}
                         >
-                          <option value="text">Short Text</option>
-                          <option value="textarea">Long Text</option>
+                          <option value="text">Text Input</option>
+                          <option value="textarea">Multi-line Text</option>
                           <option value="number">Number</option>
                           <option value="date">Date</option>
                           <option value="time">Time</option>
-                          <option value="select">Dropdown Single Select</option>
-                          <option value="multiselect">Multiple Selection</option>
-                          <option value="checkbox">Checkbox (Yes/No)</option>
+                          <option value="select">Dropdown Choice</option>
+                          <option value="multiselect">Multiple Choices</option>
+                          <option value="checkbox">Yes / No Checkbox</option>
                         </select>
-                        <button
-                          type="button"
-                          className="btn-remove-field"
-                          onClick={() => handleRemoveField(idx)}
-                          title="Remove field"
-                        >
-                          ✕
-                        </button>
+                        {fields.length > 1 && (
+                          <button
+                            type="button"
+                            className="btn-remove-field"
+                            onClick={() => handleRemoveField(idx)}
+                            title="Remove field"
+                          >
+                            ✕
+                          </button>
+                        )}
                       </div>
 
                       <div className="field-card-body">
-                        <div className="field-options-row">
+                        <div className="field-setting-row">
                           <input
                             type="text"
                             className="field-placeholder-input"
-                            placeholder="Placeholder / Hint"
+                            placeholder="Placeholder / Guidance note..."
                             value={field.placeholder}
                             onChange={(e) => handleFieldChange(idx, { placeholder: e.target.value })}
                           />
-                          <label className="checkbox-label">
+                          <label className="checkbox-label-sm">
                             <input
                               type="checkbox"
                               checked={field.required}
                               onChange={(e) => handleFieldChange(idx, { required: e.target.checked })}
                             />
-                            Mandatory
+                            Required
                           </label>
                         </div>
 
-                        <div className="assignment-section">
-                          <span className="assign-title">Who can edit this field?</span>
-                          <div className="radio-group">
+                        {(field.fieldType === 'select' || field.fieldType === 'multiselect') && (
+                          <div className="field-setting-row">
+                            <input
+                              type="text"
+                              className="field-options-input"
+                              placeholder="Comma-separated options (e.g. Morning, Afternoon, Evening)"
+                              value={field.optionsStr}
+                              onChange={(e) => handleFieldChange(idx, { optionsStr: e.target.value })}
+                            />
+                          </div>
+                        )}
+
+                        <div className="field-assignment-box">
+                          <span className="setting-label">Who can edit this field?</span>
+                          <div className="radio-group-sm">
                             <label className="radio-label">
                               <input
                                 type="radio"
@@ -374,18 +514,50 @@ export const FillableMessageBuilder: React.FC<FillableMessageBuilderProps> = ({
                           </div>
 
                           {field.assignmentMode === 'custom' && (
-                            <div className="participant-chips" style={{ marginTop: '8px' }}>
-                              {conversationParticipants
-                                .filter(p => p.id !== currentUserId)
-                                .map((p) => (
-                                  <div
-                                    key={p.id}
-                                    className={`chip ${field.assignedUserIds.includes(p.id) ? 'selected' : ''}`}
-                                    onClick={() => handleToggleParticipant(idx, p.id)}
-                                  >
-                                    {p.username}
-                                  </div>
-                                ))}
+                            <div className="builder-participant-picker mini">
+                              <div className="picker-header-info">
+                                <span className="picker-count-label">
+                                  Assigned to ({field.assignedUserIds.length} selected):
+                                </span>
+                              </div>
+                              <div className="picker-user-list">
+                                {candidateUsers.map((p) => {
+                                  const isSelected = field.assignedUserIds.includes(p.id);
+                                  const avatar = getAvatarGradient(p.username);
+                                  return (
+                                    <div
+                                      key={p.id}
+                                      className={`picker-user-row ${isSelected ? 'selected' : ''}`}
+                                      onClick={() => handleToggleParticipant(idx, p.id)}
+                                    >
+                                      <div
+                                        className="picker-user-avatar sm"
+                                        style={{
+                                          background: avatar.bg,
+                                          border: `1px solid ${avatar.border}`,
+                                          boxShadow: `0 0 6px ${avatar.glow}`
+                                        }}
+                                      >
+                                        {p.username.charAt(0).toUpperCase()}
+                                      </div>
+                                      <div className="picker-user-info">
+                                        <span className="picker-user-name">{p.username}</span>
+                                      </div>
+                                      <div className="picker-checkbox-wrapper">
+                                        <input
+                                          type="checkbox"
+                                          className="picker-checkbox"
+                                          checked={isSelected}
+                                          onChange={() => {}}
+                                        />
+                                        <span className={`custom-checkbox ${isSelected ? 'checked' : ''}`}>
+                                          {isSelected && '✓'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           )}
                         </div>

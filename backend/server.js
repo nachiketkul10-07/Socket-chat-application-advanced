@@ -2123,6 +2123,26 @@ function handleAppendFillableDetail(session, msg) {
     return;
   }
 
+  // Check append assignment permission
+  let segments = {};
+  try {
+    segments = typeof collabMsg.template_segments === 'string'
+      ? JSON.parse(collabMsg.template_segments)
+      : (collabMsg.template_segments || {});
+  } catch (e) {}
+
+  const appendMode = segments.appendAssignmentMode || 'all';
+  const appendAssignedUsers = Array.isArray(segments.appendAssignedUserIds) ? segments.appendAssignedUserIds : [];
+
+  if (appendMode === 'creator' && session.userId !== collabMsg.creator_id) {
+    sendLine(socket, { type: 'fillable_message_error', messageId, error: 'Only the creator can append details to this message' });
+    return;
+  }
+  if (appendMode === 'custom' && session.userId !== collabMsg.creator_id && !appendAssignedUsers.includes(session.userId)) {
+    sendLine(socket, { type: 'fillable_message_error', messageId, error: 'You are not authorized to append details to this message' });
+    return;
+  }
+
   const cleanVal = (value !== undefined && value !== null) ? String(value).trim() : '';
   if (!cleanVal) {
     sendError(socket, 'Detail value cannot be empty');

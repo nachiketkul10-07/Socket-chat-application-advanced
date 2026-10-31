@@ -110,10 +110,23 @@ export const FillableMessageCard: React.FC<FillableMessageCardProps> = ({
   // Find if current user has an own contribution
   const myOwnField = payload.fields?.find(f => f.isOwnContribution || (f.lastEditorId === currentUser.id));
 
+  // Determine if current user is permitted to append details based on creator settings
+  const segments = payload.templateSegments as any;
+  const appendMode = (segments && typeof segments === 'object' && !Array.isArray(segments) && segments.appendAssignmentMode) || 'all';
+  const appendAssigned = (segments && typeof segments === 'object' && !Array.isArray(segments) && Array.isArray(segments.appendAssignedUserIds))
+    ? segments.appendAssignedUserIds
+    : [];
+
+  const canAppend = !isLocked && (
+    appendMode === 'all' ||
+    (appendMode === 'creator' && isCreator) ||
+    (appendMode === 'custom' && (isCreator || appendAssigned.includes(currentUser.id)))
+  );
+
   // Build WhatsApp-style Context Menu Actions
   const menuActions: ContextMenuAction[] = [];
 
-  if (!isLocked) {
+  if (canAppend) {
     menuActions.push({
       label: 'Append Details',
       icon: '➕',
@@ -257,15 +270,17 @@ export const FillableMessageCard: React.FC<FillableMessageCardProps> = ({
           )}
 
           {/* Quick inline action bar */}
-          {!isLocked && (
+          {!isLocked && (canAppend || myOwnField) && (
             <div className="collab-bubble-actions">
-              <button
-                type="button"
-                className="btn-collab-append"
-                onClick={() => setIsAppendOpen(true)}
-              >
-                ➕ Append Detail
-              </button>
+              {canAppend && (
+                <button
+                  type="button"
+                  className="btn-collab-append"
+                  onClick={() => setIsAppendOpen(true)}
+                >
+                  ➕ Append Detail
+                </button>
+              )}
               {myOwnField && (
                 <button
                   type="button"
