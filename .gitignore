@@ -36,3 +36,7 @@ build_err.txt
 .env.*.local
 .DS_Store
 Thumbs.db
+
+# Vite cache
+.vite/
+dashboard/.vite/

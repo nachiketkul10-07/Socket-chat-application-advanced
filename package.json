@@ -1,0 +1,23 @@
+{
+  "name": "socket-chat-application",
+  "version": "1.0.0",
+  "description": "Real-time socket chat application with adaptive message recovery, live collaborative fill-in messages, and C++ OOP architecture",
+  "main": "run_production.js",
+  "scripts": {
+    "postinstall": "cd backend && npm install && cd ../bridge && npm install && cd ../dashboard && npm install && npm run build",
+    "build": "cd dashboard && npm run build",
+    "start": "node run_production.js",
+    "dev": "node run_all.js"
+  },
+  "keywords": [
+    "chat",
+    "socket",
+    "websocket",
+    "vit-pune",
+    "oop",
+    "cpp"
+  ],
+  "author": "VIT Pune Team (Amey, Aryan, Nachiket, Prathamesh)",
+  "license": "MIT"
+}
+
