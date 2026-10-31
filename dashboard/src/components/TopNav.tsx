@@ -10,6 +10,7 @@ interface TopNavProps {
   isRightPanelOpen?: boolean;
   onToggleRightPanel?: () => void;
   unreadNotificationsCount?: number;
+  onLogoClick?: () => void;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -21,13 +22,19 @@ export const TopNav: React.FC<TopNavProps> = ({
   isRightPanelOpen = true,
   onToggleRightPanel,
   unreadNotificationsCount = 0,
+  onLogoClick,
 }) => {
   const avatarStyle = currentUser ? getAvatarGradient(currentUser.username) : null;
 
   return (
     <header className="top-nav">
       <div className="nav-left">
-        <div className="brand-logo">
+        <div
+          className="brand-logo"
+          onClick={onLogoClick}
+          style={{ cursor: onLogoClick ? 'pointer' : 'default' }}
+          title="Return to conversation list & Public General"
+        >
           <div className="brand-icon">💬</div>
           <div className="brand-text">
             <span className="brand-title">SocketChat</span>

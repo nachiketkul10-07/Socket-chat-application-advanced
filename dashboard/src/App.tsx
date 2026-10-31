@@ -96,7 +96,15 @@ function App() {
         setConversations(message.conversations || []);
         if (!activeConversationRef.current && message.conversations && message.conversations.length > 0) {
           const pub = message.conversations.find((c: Conversation) => c.id === 'public_general') || message.conversations[0];
-          if (pub) handleSelectConversation(pub.id);
+          if (pub) {
+            setActiveConversation(pub.id);
+            activeConversationRef.current = pub.id;
+            wsService.send({
+              type: 'fetch_history',
+              conversationId: pub.id,
+              limit: 50
+            });
+          }
         }
         break;
 
@@ -225,8 +233,10 @@ function App() {
       case 'conversation_created':
       case 'group_created':
         wsService.send({ type: 'fetch_conversations' });
-        if (message.conversationId && message.isInitiator) {
+        if (message.conversationId && message.isInitiator !== false) {
           handleSelectConversation(message.conversationId);
+          setActiveTab(message.type === 'group_created' ? 'group' : 'direct');
+          setIsMobileConversationListOpen(false);
         }
         break;
 
@@ -702,12 +712,27 @@ function App() {
     return 'Chat';
   };
 
+  const handleToggleActivity = () => {
+    if (!isMobileConversationListOpen) {
+      setIsMobileConversationListOpen(true);
+    }
+    setIsRightPanelOpen(true);
+    setTimeout(() => {
+      const panel = document.querySelector('.right-panel');
+      if (panel) {
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 60);
+  };
+
   const filteredConversations = conversations
-    .filter(conv => conv.type === activeTab)
     .filter(conv => {
-      if (!searchQuery) return true;
-      const name = getConversationName(conv).toLowerCase();
-      return name.includes(searchQuery.toLowerCase());
+      if (searchQuery.trim()) {
+        const name = getConversationName(conv).toLowerCase();
+        const lastMsg = (conv.lastMessage || '').toLowerCase();
+        return name.includes(searchQuery.toLowerCase()) || lastMsg.includes(searchQuery.toLowerCase());
+      }
+      return conv.type === activeTab;
     });
 
   const activeConvMessages = activeConversation ? messages.get(activeConversation) || [] : [];
@@ -795,8 +820,12 @@ function App() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         isRightPanelOpen={isRightPanelOpen}
-        onToggleRightPanel={() => setIsRightPanelOpen(prev => !prev)}
+        onToggleRightPanel={handleToggleActivity}
         unreadNotificationsCount={notifications.filter(n => !n.isRead).length}
+        onLogoClick={() => {
+          handleSelectConversation('public_general');
+          setIsMobileConversationListOpen(true);
+        }}
         onLogout={() => {
           localStorage.removeItem('chat_username');
           wsService.disconnect();

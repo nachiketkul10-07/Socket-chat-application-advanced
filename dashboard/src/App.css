@@ -375,9 +375,10 @@
 }
 
 .nav-center {
-  flex: 1;
+  flex: 1 1 360px;
   max-width: 480px;
-  margin: 0 24px;
+  min-width: 240px;
+  margin: 0 16px;
 }
 
 .search-input-wrapper {
@@ -1577,20 +1578,6 @@
 }
 
 @media (max-width: 1100px) {
-  .left-panel {
-    width: 280px;
-  }
-
-  .right-panel {
-    display: none;
-  }
-
-  .nav-center {
-    margin: 0 20px;
-  }
-}
-
-@media (max-width: 760px) {
   .app {
     height: 100vh;
     height: 100dvh;
@@ -1600,7 +1587,7 @@
   .top-nav {
     min-height: 58px;
     height: auto;
-    padding: 8px 12px;
+    padding: 8px 14px;
     gap: 8px;
     flex-wrap: wrap;
   }
@@ -1610,11 +1597,6 @@
     align-items: center;
     min-width: 0;
     flex: 1 1 auto;
-  }
-
-  .nav-left h1 {
-    font-size: 15px;
-    white-space: nowrap;
   }
 
   .connection-badge {
@@ -1632,24 +1614,25 @@
     gap: 6px;
   }
 
-  .user-profile .user-name {
-    display: none;
-  }
-
   .logout-btn {
-    padding: 7px 9px;
+    padding: 6px 10px;
   }
 
   .nav-center {
     order: 3;
     flex: 1 0 100%;
-    max-width: none;
-    margin: 0;
+    max-width: 100%;
+    margin: 4px 0 0 0;
+  }
+
+  .search-input-wrapper {
+    width: 100%;
   }
 
   .global-search {
-    padding: 9px 12px;
-    font-size: 16px;
+    padding: 9px 34px;
+    font-size: 13.5px;
+    width: 100%;
   }
 
   .main-content {
@@ -1898,7 +1881,7 @@
   }
 }
 
-@media (max-height: 520px) and (max-width: 760px) {
+@media (max-height: 520px) and (max-width: 1100px) {
   .top-nav {
     min-height: 48px;
     padding-top: 5px;

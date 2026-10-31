@@ -1034,11 +1034,14 @@ function handleFetchHistory(session, msg) {
   }
 
   const rawMsgs = db.prepare(`
-    SELECT * FROM messages
-    WHERE conversation_id = ?
-      AND id NOT IN (SELECT message_id FROM deleted_messages_for_me WHERE user_id = ?)
+    SELECT * FROM (
+      SELECT * FROM messages
+      WHERE conversation_id = ?
+        AND id NOT IN (SELECT message_id FROM deleted_messages_for_me WHERE user_id = ?)
+      ORDER BY seq DESC, timestamp DESC
+      LIMIT ?
+    )
     ORDER BY seq ASC, timestamp ASC
-    LIMIT ?
   `).all(conversationId, session.userId, limit);
 
   const formatted = rawMsgs.map(m => formatMessageForUser(m, session.userId));
@@ -1119,7 +1122,7 @@ function handleCreateDirect(session, msg) {
   `).get(session.userId, otherUserId);
 
   if (existing) {
-    sendLine(socket, { type: 'conversation_created', conversationId: existing.id });
+    sendLine(socket, { type: 'conversation_created', conversationId: existing.id, isInitiator: true });
     return;
   }
 
@@ -1135,8 +1138,8 @@ function handleCreateDirect(session, msg) {
   db.prepare('INSERT INTO conversation_members (conversation_id, user_id, joined_at) VALUES (?, ?, ?)')
     .run(convId, otherUserId, now);
 
-  sendLine(socket, { type: 'conversation_created', conversationId: convId });
-  sendToUser(otherUserId, { type: 'conversation_created', conversationId: convId });
+  sendLine(socket, { type: 'conversation_created', conversationId: convId, isInitiator: true });
+  sendToUser(otherUserId, { type: 'conversation_created', conversationId: convId, isInitiator: false });
 }
 
 function handleCreateGroup(session, msg) {
@@ -1187,6 +1190,7 @@ function handleCreateGroup(session, msg) {
   sendLine(socket, {
     type: 'group_created',
     conversationId: convId,
+    isInitiator: true,
     conversation: { id: convId, type: 'group', name: groupName, unreadCount: 0 }
   });
 }
