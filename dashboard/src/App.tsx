@@ -38,6 +38,18 @@ function App() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const touchTimerRef = useRef<any>(null);
 
+  // ==========================================
+  // Real-Time Stale-Closure Prevention Refs
+  // ==========================================
+  const activeConversationRef = useRef<string | null>(null);
+  activeConversationRef.current = activeConversation;
+
+  const currentUserRef = useRef<User | null>(null);
+  currentUserRef.current = currentUser;
+
+  const conversationsRef = useRef<Conversation[]>([]);
+  conversationsRef.current = conversations;
+
   // Auto-authenticate saved user on page refresh or initial connect
   useEffect(() => {
     const savedUser = localStorage.getItem('chat_username');
@@ -48,24 +60,30 @@ function App() {
     }
   }, []);
 
+  // Stable message dispatcher: Always calls the freshest handleServerMessage
+  const handleServerMessageRef = useRef<(msg: ServerMessage) => void>(() => {});
+
   useEffect(() => {
-    const unsubMsg = wsService.onMessage(handleServerMessage);
+    const unsubMsg = wsService.onMessage((msg) => {
+      handleServerMessageRef.current?.(msg);
+    });
     const unsubStatus = wsService.onStatusChange((status) => {
       setIsConnected(status);
-      if (status && currentUser) {
-        wsService.send({ type: 'auth', username: currentUser.username });
+      if (status && currentUserRef.current) {
+        wsService.send({ type: 'auth', username: currentUserRef.current.username });
       }
     });
     return () => {
       unsubMsg();
       unsubStatus();
     };
-  }, [currentUser]);
+  }, []);
 
   const handleServerMessage = (message: ServerMessage) => {
     switch (message.type) {
       case 'auth_success':
         setCurrentUser(message.user);
+        currentUserRef.current = message.user;
         setIsConnected(true);
         wsService.send({ type: 'fetch_conversations' });
         wsService.send({ type: 'fetch_users' });
@@ -75,7 +93,7 @@ function App() {
 
       case 'conversations':
         setConversations(message.conversations || []);
-        if (!activeConversation && message.conversations && message.conversations.length > 0) {
+        if (!activeConversationRef.current && message.conversations && message.conversations.length > 0) {
           const pub = message.conversations.find((c: Conversation) => c.id === 'public_general') || message.conversations[0];
           if (pub) handleSelectConversation(pub.id);
         }
@@ -107,12 +125,13 @@ function App() {
             newMap.set(message.user.id, message.user);
             return newMap;
           });
+          setSuggestions(prev => prev.map(s => s.id === message.user.id ? { ...s, isOnline: message.user.isOnline } : s));
         }
         break;
 
       case 'typing': {
         const typingEvt = message as unknown as TypingIndicator;
-        if (typingEvt.userId === currentUser?.id) break;
+        if (typingEvt.userId === currentUserRef.current?.id) break;
         const convId = typingEvt.conversationId;
         const timerKey = `${convId}_${typingEvt.username}`;
 
@@ -134,7 +153,6 @@ function App() {
           return newMap;
         });
 
-        // Auto-clear indicator after 3.5s in case user stops typing without explicit event
         if (typingEvt.isTyping) {
           const timer = setTimeout(() => {
             setTypingMap(prev => {
@@ -206,7 +224,7 @@ function App() {
       case 'conversation_created':
       case 'group_created':
         wsService.send({ type: 'fetch_conversations' });
-        if (message.conversationId) {
+        if (message.conversationId && message.isInitiator) {
           handleSelectConversation(message.conversationId);
         }
         break;
@@ -215,33 +233,31 @@ function App() {
       case 'member_removed':
       case 'group_left':
         wsService.send({ type: 'fetch_conversations' });
-        if (activeConversation) {
-          wsService.send({ type: 'fetch_group_members', conversationId: activeConversation });
+        if (activeConversationRef.current) {
+          wsService.send({ type: 'fetch_group_members', conversationId: activeConversationRef.current });
         }
         break;
 
-      case 'fillable_field_updated': {
-        const { messageId, conversationId, field } = message;
+      // ==========================================
+      // Live Collaborative Fill-in Messages Real-Time Events
+      // ==========================================
+      case 'fillable_message_created':
+        if (message.message) {
+          handleIncomingMessage(message.message);
+        }
+        break;
+
+      case 'fillable_message_updated': {
+        const { messageId, conversationId, fillable, status } = message;
         setMessages(prev => {
           const newMap = new Map(prev);
           const convMsgs = newMap.get(conversationId) || [];
           const updated = convMsgs.map(m => {
-            if (m.id === messageId && m.fillable) {
-              const existingFields = m.fillable.fields || [];
-              const fieldIdx = existingFields.findIndex(f => f.fieldId === field.fieldId);
-              let newFields = [...existingFields];
-              if (fieldIdx >= 0) {
-                newFields[fieldIdx] = { ...newFields[fieldIdx], ...field };
-              } else {
-                newFields.push(field);
-              }
+            if (m.id === messageId) {
               return {
                 ...m,
-                fillable: {
-                  ...m.fillable,
-                  fields: newFields,
-                  updatedAt: Math.floor(Date.now() / 1000)
-                }
+                fillable: fillable || (m.fillable ? { ...m.fillable, status: status || m.fillable.status } : m.fillable),
+                timestamp: message.updatedAt || m.timestamp
               };
             }
             return m;
@@ -252,6 +268,7 @@ function App() {
         break;
       }
 
+      case 'fillable_field_updated':
       case 'fillable_detail_appended': {
         const { messageId, conversationId, field } = message;
         setMessages(prev => {
@@ -306,7 +323,7 @@ function App() {
       }
 
       case 'fillable_message_finalized': {
-        const { messageId, conversationId, finalizedBy } = message;
+        const { messageId, conversationId, fillable, finalizedBy } = message;
         setMessages(prev => {
           const newMap = new Map(prev);
           const convMsgs = newMap.get(conversationId) || [];
@@ -314,7 +331,7 @@ function App() {
             if (m.id === messageId && m.fillable) {
               return {
                 ...m,
-                fillable: {
+                fillable: fillable || {
                   ...m.fillable,
                   status: 'finalized' as const,
                   finalizedBy,
@@ -331,7 +348,7 @@ function App() {
       }
 
       case 'fillable_message_reopened': {
-        const { messageId, conversationId } = message;
+        const { messageId, conversationId, fillable } = message;
         setMessages(prev => {
           const newMap = new Map(prev);
           const convMsgs = newMap.get(conversationId) || [];
@@ -339,7 +356,7 @@ function App() {
             if (m.id === messageId && m.fillable) {
               return {
                 ...m,
-                fillable: {
+                fillable: fillable || {
                   ...m.fillable,
                   status: 'open' as const,
                   finalizedBy: null,
@@ -355,7 +372,7 @@ function App() {
         break;
       }
 
-      case 'fillable_message_expired': {
+      case 'fillable_message_cancelled': {
         const { messageId, conversationId } = message;
         setMessages(prev => {
           const newMap = new Map(prev);
@@ -366,7 +383,7 @@ function App() {
                 ...m,
                 fillable: {
                   ...m.fillable,
-                  status: 'expired' as const
+                  status: 'cancelled' as const
                 }
               };
             }
@@ -389,7 +406,11 @@ function App() {
     }
   };
 
+  handleServerMessageRef.current = handleServerMessage;
+
   const handleIncomingMessage = (msg: Message) => {
+    const curActive = activeConversationRef.current;
+
     setMessages(prev => {
       const newMap = new Map(prev);
       const convMessages = newMap.get(msg.conversationId) || [];
@@ -409,23 +430,30 @@ function App() {
       return newMap;
     });
 
-    setConversations(prev => prev.map(conv => {
-      if (conv.id === msg.conversationId) {
-        const isCurrentActive = activeConversation === conv.id;
-        const previewText = msg.kind === 'collaborative_fillin'
-          ? '📋 Live Fill-in Message'
-          : (msg.text || msg.content || 'New message');
-
-        return {
-          ...conv,
-          lastMessage: previewText,
-          lastMessageTime: msg.timestamp || msg.createdAt,
-          lastMessageFrom: msg.fromUserId || msg.senderId,
-          unreadCount: isCurrentActive ? 0 : (conv.unreadCount || 0) + 1
-        };
+    setConversations(prev => {
+      const exists = prev.some(c => c.id === msg.conversationId);
+      if (!exists) {
+        wsService.send({ type: 'fetch_conversations' });
+        return prev;
       }
-      return conv;
-    }));
+      return prev.map(conv => {
+        if (conv.id === msg.conversationId) {
+          const isCurrentActive = curActive === conv.id;
+          const previewText = msg.kind === 'collaborative_fillin'
+            ? '📋 Live Fill-in Message'
+            : (msg.text || msg.content || 'New message');
+
+          return {
+            ...conv,
+            lastMessage: previewText,
+            lastMessageTime: msg.timestamp || msg.createdAt,
+            lastMessageFrom: msg.fromUserId || msg.senderId,
+            unreadCount: isCurrentActive ? 0 : (conv.unreadCount || 0) + 1
+          };
+        }
+        return conv;
+      });
+    });
   };
 
   const handleLogin = async () => {
@@ -446,19 +474,20 @@ function App() {
 
   const handleSelectConversation = (convId: string) => {
     setActiveConversation(convId);
+    activeConversationRef.current = convId;
     setIsMobileConversationListOpen(false);
     setConversations(prev => prev.map(c => c.id === convId ? { ...c, unreadCount: 0 } : c));
     wsService.send({ type: 'mark_read', conversationId: convId });
 
-    if (!messages.has(convId)) {
-      wsService.send({
-        type: 'fetch_history',
-        conversationId: convId,
-        limit: 50
-      });
-    }
+    // Always fetch latest messages from server so user always has fresh view
+    wsService.send({
+      type: 'fetch_history',
+      conversationId: convId,
+      limit: 50
+    });
 
-    const targetConv = conversations.find(c => c.id === convId);
+    // Refresh group members if group
+    const targetConv = conversationsRef.current.find(c => c.id === convId);
     if (targetConv && targetConv.type === 'group') {
       wsService.send({ type: 'fetch_group_members', conversationId: convId });
     }
@@ -466,11 +495,12 @@ function App() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessageInput(e.target.value);
-    if (!activeConversation) return;
+    const activeId = activeConversationRef.current;
+    if (!activeId) return;
 
     wsService.send({
       type: 'typing',
-      conversationId: activeConversation,
+      conversationId: activeId,
       isTyping: true
     });
 
@@ -478,24 +508,25 @@ function App() {
     typingTimeoutRef.current = setTimeout(() => {
       wsService.send({
         type: 'typing',
-        conversationId: activeConversation,
+        conversationId: activeId,
         isTyping: false
       });
     }, 2000);
   };
 
   const handleSendMessage = () => {
-    if (!messageInput.trim() || !activeConversation) return;
+    const activeId = activeConversationRef.current;
+    if (!messageInput.trim() || !activeId) return;
     wsService.send({
       type: 'message',
-      conversationId: activeConversation,
+      conversationId: activeId,
       text: messageInput.trim()
     });
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     wsService.send({
       type: 'typing',
-      conversationId: activeConversation,
+      conversationId: activeId,
       isTyping: false
     });
 
@@ -510,7 +541,7 @@ function App() {
     setIsDeleteModalOpen(true);
   };
 
-  // Mobile long-press touch handlers
+  // Mobile long-press touch handlers (500ms)
   const handleTouchStart = (msg: Message) => {
     touchTimerRef.current = setTimeout(() => {
       if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
@@ -581,29 +612,32 @@ function App() {
   };
 
   const handleRemoveMember = (userId: string) => {
-    if (!activeConversation) return;
+    const activeId = activeConversationRef.current;
+    if (!activeId) return;
     wsService.send({
       type: 'remove_group_member',
-      conversationId: activeConversation,
+      conversationId: activeId,
       userId
     });
   };
 
   const handleLeaveGroup = () => {
-    if (!activeConversation) return;
+    const activeId = activeConversationRef.current;
+    if (!activeId) return;
     wsService.send({
       type: 'leave_group',
-      conversationId: activeConversation
+      conversationId: activeId
     });
     setIsMembersModalOpen(false);
-    setActiveConversation('public_general');
+    handleSelectConversation('public_general');
   };
 
   const handleOpenMembersModal = () => {
-    if (activeConversation) {
+    const activeId = activeConversationRef.current;
+    if (activeId) {
       wsService.send({
         type: 'fetch_group_members',
-        conversationId: activeConversation
+        conversationId: activeId
       });
       setIsMembersModalOpen(true);
     }
@@ -628,11 +662,12 @@ function App() {
   };
 
   const getConversationParticipants = (): User[] => {
-    if (!activeConversation) return [];
-    if (activeConversation === 'public_general') {
+    const activeId = activeConversationRef.current;
+    if (!activeId) return [];
+    if (activeId === 'public_general') {
       return Array.from(users.values());
     }
-    const conv = conversations.find(c => c.id === activeConversation);
+    const conv = conversationsRef.current.find(c => c.id === activeId);
     if (conv && conv.type === 'direct') {
       return Array.from(users.values());
     }
@@ -707,6 +742,7 @@ function App() {
           localStorage.removeItem('chat_username');
           wsService.disconnect();
           setCurrentUser(null);
+          currentUserRef.current = null;
           setUsername('');
         }}
       />
