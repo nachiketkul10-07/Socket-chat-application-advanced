@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Message, User, FillableRevision, FillableFieldDetail } from '../types';
 import { FillableMessageHistoryModal } from './FillableMessageHistoryModal';
 import { MessageContextMenu, ContextMenuAction } from './MessageContextMenu';
@@ -10,18 +10,21 @@ interface FillableMessageCardProps {
   message: Message;
   currentUser: User;
   users: Map<string, User>;
+  onPromptDelete?: (message: Message) => void;
 }
 
 export const FillableMessageCard: React.FC<FillableMessageCardProps> = ({
   message,
   currentUser,
-  users
+  users,
+  onPromptDelete
 }) => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyRevisions, setHistoryRevisions] = useState<FillableRevision[]>([]);
   const [isAppendOpen, setIsAppendOpen] = useState(false);
   const [editField, setEditField] = useState<FillableFieldDetail | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const touchTimerRef = useRef<any>(null);
 
   const payload = message.fillable;
   if (!payload) return null;
@@ -58,13 +61,10 @@ export const FillableMessageCard: React.FC<FillableMessageCardProps> = ({
         unsub();
       }
     });
-
-    setTimeout(() => {
-      setIsHistoryOpen(true);
-    }, 150);
   };
 
   const handleToggleLock = () => {
+    if (!isCreator) return;
     if (isFinalized) {
       wsService.send({
         type: 'reopen_fillable_message',
@@ -87,6 +87,23 @@ export const FillableMessageCard: React.FC<FillableMessageCardProps> = ({
         .join('\n');
     }
     navigator.clipboard?.writeText(copyText);
+  };
+
+  // Mobile long-press detection (500ms)
+  const handleTouchStart = () => {
+    touchTimerRef.current = setTimeout(() => {
+      if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
+        window.navigator.vibrate(50);
+      }
+      onPromptDelete?.(message);
+    }, 500);
+  };
+
+  const handleTouchEndOrMove = () => {
+    if (touchTimerRef.current) {
+      clearTimeout(touchTimerRef.current);
+      touchTimerRef.current = null;
+    }
   };
 
   // Find if current user has an own contribution
@@ -131,6 +148,12 @@ export const FillableMessageCard: React.FC<FillableMessageCardProps> = ({
     onClick: handleCopyText
   });
 
+  menuActions.push({
+    label: 'Delete Message',
+    icon: '🗑️',
+    onClick: () => onPromptDelete?.(message)
+  });
+
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY });
@@ -156,7 +179,11 @@ export const FillableMessageCard: React.FC<FillableMessageCardProps> = ({
         <div
           className={`message-bubble collaborative-bubble ${isLocked ? 'bubble-locked' : ''}`}
           onContextMenu={handleContextMenu}
-          title="Right-click for options"
+          onDoubleClick={() => onPromptDelete?.(message)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEndOrMove}
+          onTouchMove={handleTouchEndOrMove}
+          title="Right-click for options • Double-tap or hold to delete"
         >
           {/* Main message text */}
           <div className="collab-bubble-intro">
@@ -178,25 +205,27 @@ export const FillableMessageCard: React.FC<FillableMessageCardProps> = ({
                   <div
                     key={field.fieldId}
                     className={`collab-detail-item ${isClickable ? 'clickable' : ''}`}
-                    onClick={() => isClickable && setEditField(field)}
-                    title={isClickable ? 'Click to edit' : undefined}
+                    onClick={() => {
+                      if (!isLocked && (isCreator || field.isOwnContribution)) {
+                        setEditField(field);
+                      }
+                    }}
+                    title={isClickable ? 'Click to edit your detail' : ''}
                   >
-                    <span className="collab-bullet">• </span>
+                    <span className="collab-detail-bullet">•</span>
+                    <span className="collab-detail-label">{labelText}</span>
+                    <span className="collab-detail-value">{valText}</span>
 
-                    {/* Creator View: Shows who contributed what! */}
+                    {/* Attribution Privacy: creator views full provenance, non-creator sees (You) for own */}
                     {isCreator && field.lastEditorUsername && (
-                      <span className="collab-author-tag">
-                        [{field.lastEditorUsername}]:{' '}
+                      <span className="collab-editor-tag-creator">
+                        ({field.lastEditorUsername})
                       </span>
                     )}
-
-                    {/* Non-Creator View: Only clean label + value! */}
-                    <span className="collab-label">{labelText}</span>
-                    <span className="collab-value">{valText}</span>
-
-                    {/* Non-Creator: if it's user's own contribution, show subtle (You) */}
                     {!isCreator && field.isOwnContribution && (
-                      <span className="collab-you-tag"> (You)</span>
+                      <span className="collab-editor-tag-self">
+                        (You)
+                      </span>
                     )}
                   </div>
                 );
@@ -204,26 +233,38 @@ export const FillableMessageCard: React.FC<FillableMessageCardProps> = ({
             </div>
           )}
 
-          {/* Bottom metadata inside the bubble: timestamp, lock/edit icon, hover menu trigger */}
+          {/* Quick inline action bar */}
+          {!isLocked && (
+            <div className="collab-bubble-actions">
+              <button
+                type="button"
+                className="btn-collab-append"
+                onClick={() => setIsAppendOpen(true)}
+              >
+                ➕ Append Detail
+              </button>
+              {myOwnField && (
+                <button
+                  type="button"
+                  className="btn-collab-edit-mine"
+                  onClick={() => setEditField(myOwnField)}
+                >
+                  ✏️ Edit Mine
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Status badge & timestamp */}
           <div className="collab-bubble-footer">
             {isLocked ? (
-              <span className="collab-status-icon" title="Message is locked">🔒</span>
+              <span className="collab-status-pill locked">🔒 Locked</span>
             ) : (
-              <span className="collab-status-icon edit-active" title="Collaborative: right-click to append">✎</span>
+              <span className="collab-status-pill open">🟢 Living Message</span>
             )}
-            <span className="collab-time">{formatTs(message.timestamp)}</span>
-            <button
-              type="button"
-              className="btn-bubble-menu"
-              onClick={(e) => {
-                e.stopPropagation();
-                const rect = e.currentTarget.getBoundingClientRect();
-                setContextMenu({ x: rect.right - 10, y: rect.bottom + 5 });
-              }}
-              title="Message options"
-            >
-              ⋯
-            </button>
+            <span className="collab-bubble-time">
+              {formatTs(payload.updatedAt || message.timestamp)}
+            </span>
           </div>
         </div>
       </div>

@@ -156,6 +156,13 @@ function initSchema() {
       kind TEXT DEFAULT 'text'
     );
 
+    CREATE TABLE IF NOT EXISTS deleted_messages_for_me (
+      user_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, message_id)
+    );
+
     CREATE TABLE IF NOT EXISTS notifications (
       id TEXT PRIMARY KEY,
       target_user_id TEXT NOT NULL,
@@ -769,6 +776,7 @@ function handleMessage(session, msg) {
     case 'leave_group':           return handleLeaveGroup(session, msg);
     case 'fetch_group_members':   return handleFetchGroupMembers(session, msg);
     case 'typing':                return handleTyping(session, msg);
+    case 'delete_message':        return handleDeleteMessage(session, msg);
     case 'mark_read':             return; // ack
     case 'mark_notification_read':return handleMarkNotifRead(session, msg);
     case 'search_users':          return handleSearchUsers(session, msg);
@@ -866,6 +874,77 @@ function handleAuth(session, msg) {
 // ==========================================
 // Handlers: Core Messaging
 // ==========================================
+
+function handleDeleteMessage(session, msg) {
+  const { socket } = session;
+  const messageId = msg.messageId;
+  const conversationId = msg.conversationId;
+  const deleteMode = msg.deleteMode || 'for_me';
+
+  if (!messageId || !conversationId) {
+    sendError(socket, 'Invalid delete request');
+    return;
+  }
+
+  const rawMsg = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId);
+  if (!rawMsg) {
+    sendError(socket, 'Message not found');
+    return;
+  }
+
+  if (deleteMode === 'for_me') {
+    const now = ts();
+    try {
+      db.prepare('INSERT OR IGNORE INTO deleted_messages_for_me (user_id, message_id, created_at) VALUES (?, ?, ?)')
+        .run(session.userId, messageId, now);
+    } catch (e) {}
+
+    sendLine(socket, {
+      type: 'message_deleted',
+      messageId,
+      conversationId,
+      deleteMode: 'for_me',
+      userId: session.userId
+    });
+    return;
+  }
+
+  if (deleteMode === 'for_everyone') {
+    const conv = getConversation(conversationId);
+    const isSender = rawMsg.from_user_id === session.userId;
+    const isGroupCreator = conv && conv.creator_id === session.userId;
+
+    let isCollabCreator = false;
+    if (rawMsg.kind === 'collaborative_fillin') {
+      const collab = db.prepare('SELECT creator_id FROM collaborative_messages WHERE message_id = ?').get(messageId);
+      if (collab && collab.creator_id === session.userId) {
+        isCollabCreator = true;
+      }
+    }
+
+    if (!isSender && !isGroupCreator && !isCollabCreator) {
+      sendError(socket, 'Only the sender or group creator can delete this message for everyone');
+      return;
+    }
+
+    const now = ts();
+    db.prepare("UPDATE messages SET text = '🚫 This message was deleted', kind = 'deleted' WHERE id = ?").run(messageId);
+
+    if (rawMsg.kind === 'collaborative_fillin') {
+      db.prepare("UPDATE collaborative_messages SET status = 'cancelled', updated_at = ? WHERE message_id = ?").run(now, messageId);
+    }
+
+    broadcastToConversation(conversationId, {
+      type: 'message_deleted',
+      messageId,
+      conversationId,
+      deleteMode: 'for_everyone',
+      deletedByUserId: session.userId,
+      deletedByUsername: session.username
+    });
+  }
+}
+
 function handleSendMessage(session, msg) {
   const { socket } = session;
   const conversationId = msg.conversationId;
@@ -926,7 +1005,7 @@ function handleFetchConversations(session) {
       displayName = other ? other.username : (conv.name || 'Direct Message');
     }
 
-    const lastMsg = db.prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY seq DESC, timestamp DESC LIMIT 1').get(conv.id);
+    const lastMsg = db.prepare('SELECT * FROM messages WHERE conversation_id = ? AND id NOT IN (SELECT message_id FROM deleted_messages_for_me WHERE user_id = ?) ORDER BY seq DESC, timestamp DESC LIMIT 1').get(conv.id, session.userId);
 
     return {
       id: conv.id,
@@ -957,9 +1036,10 @@ function handleFetchHistory(session, msg) {
   const rawMsgs = db.prepare(`
     SELECT * FROM messages
     WHERE conversation_id = ?
+      AND id NOT IN (SELECT message_id FROM deleted_messages_for_me WHERE user_id = ?)
     ORDER BY seq ASC, timestamp ASC
     LIMIT ?
-  `).all(conversationId, limit);
+  `).all(conversationId, session.userId, limit);
 
   const formatted = rawMsgs.map(m => formatMessageForUser(m, session.userId));
   const cur = getCursor(session.userId, conversationId);

@@ -36,6 +36,9 @@ export interface Message {
   createdAt?: number;
   kind?: string;
   fillable?: FillableMessagePayload;
+  isDeleted?: boolean;
+  deletedForEveryone?: boolean;
+  deletedByUsername?: string;
 }
 
 export interface Notification {
