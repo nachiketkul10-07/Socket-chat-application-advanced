@@ -123,12 +123,13 @@ async function run() {
 
   // 4. Client B Appends Detail Real-Time
   console.log('[Step 4] Client B appends a detail...');
+  await new Promise(r => setTimeout(r, 100));
   clientB.send({
     type: 'append_fillable_detail',
     messageId: collabId,
     label: 'Location',
     value: 'Pune Campus',
-    clientMutationId: 'mut_1001'
+    clientMutationId: 'mut_' + Date.now()
   });
 
   const updateOnA = await clientA.waitFor(m => m.type === 'fillable_message_updated' && m.messageId === collabId);
