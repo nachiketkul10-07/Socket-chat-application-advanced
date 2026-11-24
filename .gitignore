@@ -37,6 +37,9 @@ build_err.txt
 .DS_Store
 Thumbs.db
 
+# Archives
+*.zip
+
 # Vite cache
 .vite/
 dashboard/.vite/
