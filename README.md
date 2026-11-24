@@ -23,15 +23,19 @@ C++ Winsock2 / Node.js Chat Server (port 8080)
 
 ## Key Features
 
-1. **Membership-Bound Adaptive Message Recovery**:
+1. **User Profile PIN Protection & Anti-Impersonation**:
+   - Each user profile is locked by a cryptographically secured PIN (PBKDF2-SHA256 with unique cryptographic salt).
+   - Prevents unauthorized access or impersonation from other clients/devices.
+   - Profile automatically locks upon first registration with chosen PIN.
+2. **Membership-Bound Adaptive Message Recovery**:
    - Resumes chat automatically on refresh/reconnection.
    - Evaluates client generation and group membership epoch before replay.
    - Prevents stale or revoked member replay attack vectors.
-2. **Live Collaborative Fill-in Messages (LCFM - Model A)**:
-   - Living chat bubble editable directly via WhatsApp-style context menu (right-click).
+3. **Live Collaborative Fill-in Messages (LCFM - Model A)**:
+   - Living chat bubble editable directly via interactive builder and context actions.
    - Dynamic, unconstrained field entry on the fly.
    - **Creator-Only Attribution Privacy**: The author views exact editor provenance, while participants collaborate cleanly.
-3. **Comprehensive C++ OOP Architecture (`backend/oop_concepts.hpp` & `.cpp`)**:
+4. **Comprehensive C++ OOP Architecture (`backend/oop_concepts.hpp` & `.cpp`)**:
    - Units 1–6 (Encapsulation, Polymorphism, Constructors, File Streams, Exceptions, Generics, and SOLID principles).
 
 ---

@@ -12,6 +12,9 @@ import './App.css';
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [username, setUsername] = useState(() => localStorage.getItem('chat_username') || '');
+  const [pin, setPin] = useState(() => localStorage.getItem('chat_pin') || '');
+  const [showPin, setShowPin] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
@@ -54,9 +57,10 @@ function App() {
   // Auto-authenticate saved user on page refresh or initial connect
   useEffect(() => {
     const savedUser = localStorage.getItem('chat_username');
+    const savedPin = localStorage.getItem('chat_pin') || '';
     if (savedUser && !currentUser) {
       wsService.connect().then(() => {
-        wsService.send({ type: 'auth', username: savedUser });
+        wsService.send({ type: 'auth', username: savedUser, pin: savedPin });
       }).catch(() => {});
     }
   }, []);
@@ -71,7 +75,12 @@ function App() {
     const unsubStatus = wsService.onStatusChange((status) => {
       setIsConnected(status);
       if (status && currentUserRef.current) {
-        wsService.send({ type: 'auth', username: currentUserRef.current.username });
+        const savedPin = localStorage.getItem('chat_pin') || '';
+        wsService.send({
+          type: 'auth',
+          username: currentUserRef.current.username,
+          pin: savedPin
+        });
       }
     });
     return () => {
@@ -83,14 +92,25 @@ function App() {
   const handleServerMessage = (message: ServerMessage) => {
     switch (message.type) {
       case 'auth_success':
+        setAuthError(null);
         setCurrentUser(message.user);
         currentUserRef.current = message.user;
         setIsConnected(true);
+        if (message.user?.username) {
+          localStorage.setItem('chat_username', message.user.username);
+        }
         wsService.send({ type: 'fetch_conversations' });
         wsService.send({ type: 'fetch_users' });
         wsService.send({ type: 'fetch_notifications' });
         wsService.send({ type: 'fetch_suggestions' });
         break;
+
+      case 'auth_failed': {
+        const errText = message.error || message.message || 'Authentication failed. Please verify your PIN.';
+        setAuthError(errText);
+        localStorage.removeItem('chat_pin');
+        break;
+      }
 
       case 'conversations':
         setConversations(message.conversations || []);
@@ -411,9 +431,15 @@ function App() {
         break;
       }
 
-      case 'error':
+      case 'error': {
         console.error('[App] Server error:', message.message);
+        const errMsg = message.error || message.message || '';
+        if (errMsg.toLowerCase().includes('pin') || errMsg.toLowerCase().includes('auth')) {
+          setAuthError(errMsg);
+          localStorage.removeItem('chat_pin');
+        }
         break;
+      }
     }
   };
 
@@ -467,21 +493,38 @@ function App() {
     });
   };
 
-  const handleLogin = async (overrideUsername?: string) => {
+  const handleLogin = async (overrideUsername?: string, overridePin?: string) => {
     const targetUser = (overrideUsername || username).trim();
-    if (!targetUser) return;
+    const targetPin = (overridePin !== undefined ? overridePin : pin).trim();
+    if (!targetUser) {
+      setAuthError('Please enter a username.');
+      return;
+    }
+    if (!targetPin) {
+      setAuthError('Please enter your 4-6 digit Security PIN.');
+      return;
+    }
+    if (targetPin.length < 4) {
+      setAuthError('Security PIN must be at least 4 digits/characters.');
+      return;
+    }
+
     try {
+      setAuthError(null);
       setUsername(targetUser);
+      setPin(targetPin);
       localStorage.setItem('chat_username', targetUser);
+      localStorage.setItem('chat_pin', targetPin);
       if (!wsService.isConnected()) {
         await wsService.connect();
       }
       wsService.send({
         type: 'auth',
-        username: targetUser
+        username: targetUser,
+        pin: targetPin
       });
     } catch (err) {
-      alert('Failed to connect to backend server. Make sure server is running.');
+      setAuthError('Failed to connect to backend server. Make sure server is running.');
     }
   };
 
@@ -764,8 +807,13 @@ function App() {
                     key={name}
                     type="button"
                     className="quick-user-chip"
-                    onClick={() => handleLogin(name)}
-                    title={`Connect instantly as ${name}`}
+                    onClick={() => {
+                      setUsername(name);
+                      setAuthError(null);
+                      const pinInput = document.getElementById('login-pin-input');
+                      if (pinInput) pinInput.focus();
+                    }}
+                    title={`Select ${name} and enter PIN`}
                   >
                     <span
                       className="chip-avatar"
@@ -784,20 +832,68 @@ function App() {
           </div>
 
           <div className="login-form-divider">
-            <span>or enter custom username</span>
+            <span>profile credentials & security pin</span>
           </div>
 
+          {authError && (
+            <div className="login-error-banner">
+              <span className="error-icon">⚠️</span>
+              <span className="error-text">{authError}</span>
+            </div>
+          )}
+
           <div className="login-input-group">
-            <input
-              type="text"
-              placeholder="Username (e.g. JohnDoe)..."
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-              autoFocus
-            />
+            <div className="login-field-wrap">
+              <label htmlFor="login-username-input" className="login-field-label">Username</label>
+              <input
+                id="login-username-input"
+                type="text"
+                placeholder="Username (e.g. Nachiket)..."
+                value={username}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setAuthError(null);
+                }}
+                onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                autoFocus
+              />
+            </div>
+
+            <div className="login-field-wrap">
+              <div className="login-field-header">
+                <label htmlFor="login-pin-input" className="login-field-label">Security PIN</label>
+                <span className="login-field-sub">4-6 digits (locks your profile)</span>
+              </div>
+              <div className="login-pin-input-wrap">
+                <input
+                  id="login-pin-input"
+                  type={showPin ? 'text' : 'password'}
+                  placeholder="Enter PIN (e.g. 1234)..."
+                  value={pin}
+                  maxLength={8}
+                  onChange={(e) => {
+                    setPin(e.target.value);
+                    setAuthError(null);
+                  }}
+                  onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                />
+                <button
+                  type="button"
+                  className="btn-toggle-pin"
+                  onClick={() => setShowPin(!showPin)}
+                  title={showPin ? 'Hide PIN' : 'Show PIN'}
+                >
+                  {showPin ? '👁️' : '🔒'}
+                </button>
+              </div>
+            </div>
+
+            <div className="login-pin-notice">
+              🛡️ <strong>PIN Protected:</strong> No one can login to your profile without your secret PIN.
+            </div>
+
             <button className="btn-login-submit" onClick={() => handleLogin()}>
-              Connect & Join 🚀
+              Secure Login / Connect 🚀
             </button>
           </div>
 
@@ -805,7 +901,7 @@ function App() {
             <span className="spec-badge">⚡ TCP: 8080</span>
             <span className="spec-badge">🌐 WS: 3001</span>
             <span className="spec-badge">💾 SQLite DB</span>
-            <span className="spec-badge">🔒 LCFM Model A</span>
+            <span className="spec-badge">🔒 PIN Security</span>
           </div>
         </div>
       </div>
@@ -828,10 +924,13 @@ function App() {
         }}
         onLogout={() => {
           localStorage.removeItem('chat_username');
+          localStorage.removeItem('chat_pin');
           wsService.disconnect();
           setCurrentUser(null);
           currentUserRef.current = null;
           setUsername('');
+          setPin('');
+          setAuthError(null);
         }}
       />
 

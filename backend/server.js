@@ -2,6 +2,7 @@
 const net = require('net');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { openDatabase } = require('./lib/database');
 
 const PORT = parseInt(process.env.PORT || process.argv[2] || '8080', 10);
@@ -27,6 +28,27 @@ function generateId(prefix) {
 
 function ts() {
   return Math.floor(Date.now() / 1000);
+}
+
+function hashPin(pin, salt) {
+  if (!salt) {
+    salt = crypto.randomBytes(16).toString('hex');
+  }
+  const hash = crypto.pbkdf2Sync(String(pin).trim(), salt, 1000, 32, 'sha256').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPin(pin, storedHash) {
+  if (!storedHash) return false;
+  const parts = storedHash.split(':');
+  if (parts.length !== 2) return false;
+  const [salt, originalHash] = parts;
+  try {
+    const computedHash = crypto.pbkdf2Sync(String(pin).trim(), salt, 1000, 32, 'sha256').toString('hex');
+    return crypto.timingSafeEqual(Buffer.from(originalHash, 'hex'), Buffer.from(computedHash, 'hex'));
+  } catch (e) {
+    return false;
+  }
 }
 
 function sendLine(socket, obj) {
@@ -125,6 +147,7 @@ function initSchema() {
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
+      pin_hash TEXT,
       created_at INTEGER NOT NULL,
       last_seen_at INTEGER,
       is_online INTEGER DEFAULT 0
@@ -303,6 +326,13 @@ function initSchema() {
       db.exec("ALTER TABLE messages ADD COLUMN kind TEXT DEFAULT 'text'");
     }
     db.exec("CREATE INDEX IF NOT EXISTS idx_messages_conv_seq ON messages (conversation_id, seq)");
+  } catch (e) {}
+
+  try {
+    const userCols = db.prepare("PRAGMA table_info(users)").all();
+    if (!userCols.some(c => c.name === 'pin_hash')) {
+      db.exec("ALTER TABLE users ADD COLUMN pin_hash TEXT");
+    }
   } catch (e) {}
 
   // Seed public general channel if missing
@@ -810,6 +840,7 @@ function handleMessage(session, msg) {
 function handleAuth(session, msg) {
   const { socket } = session;
   const username = (msg.username || '').trim();
+  const pin = msg.pin !== undefined && msg.pin !== null ? String(msg.pin).trim() : '';
 
   if (!username || username.length > 50) {
     sendError(socket, 'Invalid username');
@@ -818,11 +849,41 @@ function handleAuth(session, msg) {
 
   let user = getUserByUsername(username);
   if (!user) {
+    // New user registration
     const newId = generateId('user');
-    db.prepare('INSERT INTO users (id, username, created_at, last_seen_at, is_online) VALUES (?, ?, ?, ?, 1)')
-      .run(newId, username, ts(), ts());
+    const pinHash = pin ? hashPin(pin) : null;
+    db.prepare('INSERT INTO users (id, username, pin_hash, created_at, last_seen_at, is_online) VALUES (?, ?, ?, ?, ?, 1)')
+      .run(newId, username, pinHash, ts(), ts());
     user = getUserById(newId);
   } else {
+    // Existing user: enforce PIN security check so no one can impersonate another user
+    if (user.pin_hash) {
+      if (!pin) {
+        sendLine(socket, {
+          type: 'auth_failed',
+          error: `PIN required. Please enter your PIN to access profile "${username}".`,
+          message: `PIN required. Please enter your PIN to access profile "${username}".`,
+          code: 'pin_required',
+          requiresPin: true
+        });
+        return;
+      }
+      if (!verifyPin(pin, user.pin_hash)) {
+        sendLine(socket, {
+          type: 'auth_failed',
+          error: `Incorrect PIN for profile "${username}". Access denied.`,
+          message: `Incorrect PIN for profile "${username}". Access denied.`,
+          code: 'invalid_pin',
+          requiresPin: true
+        });
+        return;
+      }
+    } else if (pin) {
+      // User profile had no PIN previously; secure it with the provided PIN
+      const pinHash = hashPin(pin);
+      db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(pinHash, user.id);
+      user.pin_hash = pinHash;
+    }
     db.prepare('UPDATE users SET is_online = 1, last_seen_at = ? WHERE id = ?').run(ts(), user.id);
   }
 
